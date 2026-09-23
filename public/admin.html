@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<script>
+    if (sessionStorage.getItem('isLoggedIn') !== 'true') {
+        window.location.href = '/login.html';
+    }
+</script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration - Matassamu Vote</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0b132b; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { background-color: #1c2541; border: none; border-radius: 12px; }
+        .form-control, .form-select { background-color: #0b132b; color: #fff; border: 1px solid #3a506b; }
+        h2, h4, .card-title { color: #ffffff !important; }
+        .form-label { color: #cbd5e1 !important; font-weight: 600; margin-bottom: 6px; }
+        .form-control, .form-select { background-color: #0b132b !important; color: #ffffff !important; border: 1px solid #3a506b !important; }
+        .form-control::placeholder { color: #64748b !important; }
+
+        .form-control:focus, .form-select:focus { background-color: #0b132b; color: #fff; border-color: #5bc0be; box-shadow: none; }
+        .btn-custom { background-color: #f77f00; color: white; font-weight: bold; border-radius: 8px; }
+        .btn-custom:hover { background-color: #d66800; color: white; }
+        .table-dark { background-color: #1c2541; color: #fff; }
+        .badge-cat { background-color: #3a506b; padding: 6px 12px; border-radius: 6px; }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Gestion des Candidats</h2>
+            <a href="/dashboard.html" class="btn btn-outline-light btn-sm">&larr; Retour au Dashboard</a>
+<button onclick="sessionStorage.removeItem('isLoggedIn'); window.location.href='/login.html';" class="px-3 py-1.5 bg-red-500/20 text-red-300 border border-red-500/30 rounded-lg text-xs font-semibold hover:bg-red-500/30 transition flex items-center gap-1.5">
+    <i class="fa-solid fa-right-from-bracket"></i> Déconnexion
+</button>
+        </div>
+
+        <!-- Formulaire d'Ajout / Modification -->
+        <div class="card p-4 mb-4">
+            <h4 id="formTitle">Ajouter / Modifier un candidat</h4>
+            <form id="candidatForm" onsubmit="saveCandidat(event)">
+                <input type="hidden" id="candidatId">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Code SMS (ex: 1 ou REST-01)</label>
+                        <input type="text" id="codeSMS" class="form-control" placeholder="1" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Catégorie</label>
+                        <select id="categoryId" class="form-select" required>
+                            <option value="1">Pâtisserie (PAT)</option>
+                            <option value="2">Créateur (CREA)</option>
+                            <option value="3">Restauration (REST)</option>
+                            <option value="4">Entrepreneur (ENT)</option>
+                            <option value="5">Artisan (ART)</option>
+                            
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nom Complet du Candidat</label>
+                        <input type="text" id="nomCandidat" class="form-control" placeholder="Nom et Prénom" required>
+                    </div>
+                </div>
+                <div class="mt-3 text-end">
+                    <button type="button" id="cancelBtn" class="btn btn-secondary d-none" onclick="resetForm()">Annuler</button>
+                    <button type="submit" class="btn btn-custom px-4">Enregistrer le candidat</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Liste des Candidats -->
+        <div class="card p-4">
+            <h4>Liste des Candidats</h4>
+            <div class="table-responsive mt-3">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>CODE</th>
+                            <th>CATÉGORIE</th>
+                            <th>NOM & PRÉNOM</th>
+                            <th>VOTES</th>
+                            <th class="text-end">ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="candidatsTable">
+                        <tr><td colspan="5" class="text-center">Chargement des données...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allCandidats = [];
+
+        async function loadCandidats() {
+            try {
+                const res = await fetch('/api/admin/candidats');
+                const result = await res.json();
+                if (result.success) {
+                    allCandidats = result.data;
+                    renderTable();
+                }
+            } catch (err) {
+                console.error("Erreur de chargement:", err);
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('candidatsTable');
+            if (allCandidats.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center">Aucun candidat trouvé</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = allCandidats.map(c => `
+                <tr>
+                    <td><strong>${c.code_vote || c.code_sms || '-'}</strong></td>
+                    <td><span class="badge-cat">${c.category_name || c.category_code || 'Catégorie ' + c.category_id}</span></td>
+                    <td>${c.nom}</td>
+                    <td><span class="badge bg-warning text-dark">${c.nombre_votes || 0} votes</span></td>
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-primary me-2" onclick="editCandidat(${c.id})">Éditer</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteCandidat(${c.id})">Supprimer</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function editCandidat(id) {
+            const candidate = allCandidats.find(c => c.id === id);
+            if (!candidate) return;
+
+            document.getElementById('candidatId').value = candidate.id;
+            document.getElementById('codeSMS').value = candidate.code_vote || candidate.code_sms || '';
+            document.getElementById('categoryId').value = candidate.category_id;
+            document.getElementById('nomCandidat').value = candidate.nom;
+
+            document.getElementById('formTitle').innerText = "Modifier le candidat";
+            document.getElementById('cancelBtn').classList.remove('d-none');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function resetForm() {
+            document.getElementById('candidatId').value = '';
+            document.getElementById('candidatForm').reset();
+            document.getElementById('formTitle').innerText = "Ajouter / Modifier un candidat";
+            document.getElementById('cancelBtn').classList.add('d-none');
+        }
+
+        async function saveCandidat(e) {
+            e.preventDefault();
+            const id = document.getElementById('candidatId').value;
+            const code_sms = document.getElementById('codeSMS').value.trim();
+            const category_id = document.getElementById('categoryId').value;
+            const nom = document.getElementById('nomCandidat').value.trim();
+
+            const url = id ? `/api/admin/candidats/${id}` : '/api/admin/candidats';
+            const method = id ? 'PUT' : 'POST';
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, code_sms, code_vote: code_sms, category_id, nom })
+                });
+
+                const result = await res.json();
+                if (result.success) {
+                    resetForm();
+                    loadCandidats();
+                } else {
+                    alert("Erreur : " + result.message);
+                }
+            } catch (err) {
+                console.error("Erreur de sauvegarde:", err);
+            }
+        }
+
+        async function deleteCandidat(id) {
+            if (!confirm("Voulez-vous vraiment supprimer ce candidat ?")) return;
+            try {
+                const res = await fetch(`/api/admin/candidats/${id}`, { method: 'DELETE' });
+                const result = await res.json();
+                if (result.success) {
+                    loadCandidats();
+                }
+            } catch (err) {
+                console.error("Erreur lors de la suppression:", err);
+            }
+        }
+
+        loadCandidats();
+    </script>
+</body>
+</html>

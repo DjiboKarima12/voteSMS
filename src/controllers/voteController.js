@@ -1,114 +1,119 @@
 const db = require('../config/db');
-const { extractData } = require('../config/moovMapping');
 
-exports.handleMoovSms = async (req, res) => {
-    const { telephone, messageBrut, transactionId } = extractData(req);
-
-    if (!telephone || !messageBrut) {
-        return res.status(200).send("Parametres insuffisants.");
-    }
-
-    // Normalisation en minuscules et suppression des espaces superflus (ex: "pat1", "PAT1", "pat 1")
-    const textClean = messageBrut.trim().toLowerCase().replace(/\s+/g, '');
-
-    // Extraire le code catégorie (lettres) et le numéro candidat (chiffres)
-    const match = textClean.match(/^([a-z]+)(\d+)$/);
-
-    if (!match) {
-        await logVote(null, telephone, null, null, messageBrut, transactionId, 'FAILED_FORMAT');
-        return res.status(200).send("Format incorrect. Envoyez par exemple pat1 ou coup2.");
-    }
-
-    const categoryCode = match[1]; // Ex: "pat", "crea", "coup"
-    const candidatCode = match[2]; // Ex: "1", "2", "5"
-
-    let connection;
+// 1. Récupérer tous les candidats pour Admin et Dashboard
+exports.getVotes = async (req, res) => {
     try {
-        connection = await db.getConnection();
-        await connection.beginTransaction();
-
-        // Recherche du candidat
-        const [rows] = await connection.query(`
-            SELECT c.id AS candidat_id, c.nom AS candidat_nom, cat.nom AS cat_nom
+        const [rows] = await db.query(`
+            SELECT 
+                c.id, 
+                c.category_id, 
+                c.code_vote, 
+                c.code_vote AS code_sms,
+                c.code_vote AS code_candidat,
+                c.nom, 
+                c.nombre_votes,
+                c.nombre_votes AS total_votes,
+                cat.nom as category_name,
+                cat.code as category_code
             FROM candidats c
-            JOIN categories cat ON c.category_id = cat.id
-            WHERE LOWER(cat.code) = ? AND c.code_vote = ?
-            FOR UPDATE
-        `, [categoryCode, candidatCode]);
+            LEFT JOIN categories cat ON c.category_id = cat.id
+            ORDER BY c.category_id ASC, CAST(c.code_vote AS UNSIGNED) ASC, c.id ASC
+        `);
+        
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        console.error("Erreur getVotes:", error.message);
+        res.status(500).json({ success: false, error: error.message, data: [] });
+    }
+};
 
-        if (rows.length === 0) {
-            await connection.commit();
-            await logVote(null, telephone, categoryCode, candidatCode, messageBrut, transactionId, 'NOT_FOUND');
-            return res.status(200).send(`Code ${categoryCode}${candidatCode} introuvable.`);
+// 2. Sauvegarder/Mettre à jour un candidat
+exports.saveAdminCandidat = async (req, res) => {
+    try {
+        const { id, code_sms, code_vote, category_id, prenom, nom } = req.body;
+        const code = (code_sms || code_vote || '').trim();
+        const fullNom = prenom ? `${prenom} ${nom}`.trim() : (nom || '').trim();
+
+        if (id) {
+            // Si mis à jour par ID
+            await db.query(
+                'UPDATE candidats SET nom = ?, category_id = IFNULL(NULLIF(?, ""), category_id), code_vote = IFNULL(NULLIF(?, ""), code_vote) WHERE id = ?',
+                [fullNom, category_id, code, id]
+            );
+            return res.json({ success: true, message: "Candidat mis à jour avec succès" });
         }
 
-        const candidat = rows[0];
+        // Si mis à jour par code_vote
+        if (code) {
+            const [existing] = await db.query('SELECT id FROM candidats WHERE code_vote = ? AND category_id = ?', [code, category_id || 1]);
+            if (existing.length > 0) {
+                await db.query(
+                    'UPDATE candidats SET nom = ? WHERE id = ?',
+                    [fullNom, existing[0].id]
+                );
+                return res.json({ success: true, message: "Candidat mis à jour avec succès" });
+            }
+        }
 
-        // Incrémentation du compteur
-        await connection.query(
-            'UPDATE candidats SET nombre_votes = nombre_votes + 1 WHERE id = ?',
-            [candidat.candidat_id]
+        // Insertion nouveau
+        await db.query(
+            'INSERT INTO candidats (code_vote, category_id, nom, nombre_votes) VALUES (?, ?, ?, 0)',
+            [code || '1', category_id || 1, fullNom]
         );
-
-        // Enregistrement dans la table d'audit
-        await connection.query(`
-            INSERT INTO votes_sms 
-            (candidat_id, telephone, category_code, candidat_code, raw_message, transaction_id, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'SUCCESS')
-        `, [candidat.candidat_id, telephone, categoryCode, candidatCode, messageBrut, transactionId]);
-
-        await connection.commit();
-
-        return res.status(200).send(`Vote valide pour ${candidat.candidat_nom} (${candidat.cat_nom}) ! Merci.`);
+        res.json({ success: true, message: "Candidat ajouté avec succès" });
 
     } catch (error) {
-        if (connection) await connection.rollback();
-        console.error("Erreur Webhook:", error);
-        await logVote(null, telephone, categoryCode, candidatCode, messageBrut, transactionId, 'SERVER_ERROR');
-        return res.status(200).send("Erreur technique. Veuillez reessayer.");
-    } finally {
-        if (connection) connection.release();
+        console.error("Erreur saveAdminCandidat:", error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 
-exports.getWinners = async (req, res) => {
+// 3. Supprimer un candidat
+exports.deleteCandidat = async (req, res) => {
     try {
-        const query = `
-            WITH RankedCandidats AS (
-                SELECT 
-                    c.id AS candidat_id,
-                    c.nom AS nom_candidat,
-                    c.nombre_votes,
-                    cat.id AS category_id,
-                    cat.code AS code_categorie,
-                    cat.nom AS nom_categorie,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY c.category_id 
-                        ORDER BY c.nombre_votes DESC, c.id ASC
-                    ) as rang
-                FROM candidats c
-                JOIN categories cat ON c.category_id = cat.id
-            )
-            SELECT nom_categorie, code_categorie, nom_candidat, nombre_votes
-            FROM RankedCandidats
-            WHERE rang = 1;
-        `;
-        const [winners] = await db.query(query);
-        return res.status(200).json({ success: true, winners });
+        const { id } = req.params;
+        await db.query('DELETE FROM candidats WHERE id = ?', [id]);
+        res.json({ success: true, message: "Candidat supprimé avec succès" });
     } catch (error) {
-        console.error("Erreur classement:", error);
-        return res.status(500).json({ success: false, error: "Erreur serveur" });
+        console.error("Erreur deleteCandidat:", error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 
-async function logVote(candidatId, phone, catCode, candCode, rawMsg, txId, status) {
+// 4. Statistiques globales
+exports.getStats = async (req, res) => {
     try {
-        await db.query(`
-            INSERT INTO votes_sms 
-            (candidat_id, telephone, category_code, candidat_code, raw_message, transaction_id, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        `, [candidatId, phone, catCode, candCode, rawMsg, txId, status]);
-    } catch (e) {
-        console.error("Erreur logVote:", e);
+        const [totalVotesRes] = await db.query('SELECT SUM(nombre_votes) as total FROM candidats');
+        const [candidatsRes] = await db.query('SELECT COUNT(*) as total FROM candidats');
+
+        res.json({
+            success: true,
+            stats: {
+                totalVotes: parseInt(totalVotesRes[0]?.total || 0, 10),
+                totalCandidats: parseInt(candidatsRes[0]?.total || 0, 10)
+            }
+        });
+    } catch (error) {
+        console.error("Erreur getStats:", error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
-}
+};
+
+// 5. Traiter les SMS entrants
+exports.handleSmsVote = async (req, res) => {
+    try {
+        const { sender, message } = req.body;
+        if (!sender || !message) {
+            return res.status(400).json({ success: false, message: "Données manquantes" });
+        }
+
+        const codeVote = message.trim();
+        await db.query('INSERT INTO votes_sms (phone_number, message, code_vote) VALUES (?, ?, ?)', [sender, message, codeVote]);
+        await db.query('UPDATE candidats SET nombre_votes = nombre_votes + 1 WHERE code_vote = ?', [codeVote]);
+
+        res.json({ success: true, message: "Vote enregistré avec succès" });
+    } catch (error) {
+        console.error("Erreur handleSmsVote:", error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
