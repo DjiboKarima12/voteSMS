@@ -48,9 +48,9 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="glass-card p-5 rounded-2xl border-l-4 border-l-amber-500">
-            <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">TOTAL DES VOTES SMS</p>
+            <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">TOTAL DES VOTES</p>
             <h2 id="kpi-total-votes" class="text-3xl font-black mt-2 text-white">0</h2>
-            <p class="text-xs text-emerald-400 mt-1 flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> Plateforme SMS</p>
+            <p class="text-xs text-emerald-400 mt-1 flex items-center gap-1"><i class="fa-solid fa-arrow-trend-up"></i> Plateforme VOTE</p>
         </div>
 
         <div class="glass-card p-5 rounded-2xl border-l-4 border-l-amber-400 gold-glow">
@@ -228,35 +228,42 @@
             ];
 
             podiumContainer.innerHTML = podiumItems.map(item => {
-                if (!item.data) return `<div class="w-1/3"></div>`;
-                const initials = getInitials(item.data.nom, item.data.prenom);
-                const share = totalVotes > 0 ? ((item.data.total_votes / totalVotes) * 100).toFixed(1) : 0;
+        if (!item.data) return `<div class="w-1/3"></div>`;
+        
+        // Gestion de l'URL de la photo
+        let photoUrl = (item.data.photo && item.data.photo.trim() !== '' && item.data.photo !== 'NULL') ? item.data.photo : 'logo.png';
+        const share = totalVotes > 0 ? ((item.data.total_votes / totalVotes) * 100).toFixed(1) : 0;
 
-                return `
-                    <div class="flex-1 flex flex-col items-center animate__animated animate__fadeInUp">
-                        ${item.crown ? '<div class="text-amber-400 text-2xl mb-1 animate-bounce"><i class="fa-solid fa-crown"></i></div>' : '<div class="h-7"></div>'}
-                        
-                        <div class="w-16 h-16 md:w-20 md:h-20 rounded-full border-4 ${item.border} bg-slate-900 flex items-center justify-center text-xl md:text-2xl font-black text-white shadow-xl relative">
-                            ${initials}
-                        </div>
+        return `
+            <div class="flex-1 flex flex-col items-center animate__animated animate__fadeInUp">
+                ${item.crown ? '<div class="text-amber-400 text-2xl mb-1 animate-bounce"><i class="fa-solid fa-crown"></i></div>' : '<div class="h-7"></div>'}
 
-                        <span class="mt-1.5 -mb-1 text-[10px] px-2.5 py-0.5 rounded-full uppercase font-extrabold shadow ${item.badge}">
-                            ${item.label}
-                        </span>
+                <!-- Cercle du haut avec la photo du candidat -->
+                <div class="w-16 h-16 md:w-20 md:h-20 rounded-full border-4 ${item.border} bg-slate-900 overflow-hidden flex items-center justify-center shadow-lg">
+                    <img src="${photoUrl}" class="w-full h-full object-cover" onerror="this.src='logo.png'" alt="${item.data.nom}">
+                </div>
 
-                        <div class="text-center mt-2 mb-2">
-                            <h4 class="text-xs md:text-sm font-bold text-white truncate max-w-[120px]">${item.data.nom}</h4>
-                            <p class="text-[10px] text-slate-400">${item.data.candidat_code || ''}</p>
-                            <p class="text-xs font-black text-amber-400 mt-0.5">${item.data.total_votes} <span class="text-[9px] text-slate-400">votes</span></p>
-                        </div>
+                <span class="mt-1.5 -mb-1 text-[10px] px-2.5 py-0.5 rounded-full uppercase font-extrabold shadow ${item.badge}">
+                    ${item.label}
+                </span>
 
-                        <div class="w-full ${item.height} podium-bar glass-card rounded-t-2xl border-t-2 ${item.border} flex flex-col items-center justify-center">
-                            <span class="text-2xl font-black text-slate-300">#${item.place}</span>
-                            <span class="text-xs text-amber-400 font-bold">${share}%</span>
-                        </div>
+                <div class="text-center mt-2 mb-2">
+                    <h4 class="text-xs md:text-sm font-bold text-white truncate max-w-[120px]">${item.data.nom}</h4>
+                    <p class="text-[10px] text-slate-400">${item.data.candidat_code || ''}</p>
+                    <p class="text-xs font-black text-amber-400 mt-0.5">${item.data.total_votes} <span class="text-[9px] text-slate-400">votes</span></p>
+                </div>
+
+                <!-- Grand bloc du bas (Socle du podium) avec la photo ou miniature du candidat à la place de #1, #2, #3 -->
+                <div class="w-full ${item.height} podium-bar glass-card rounded-t-2xl border-t-2 ${item.border} flex flex-col items-center justify-between p-2 relative overflow-hidden">
+                    <div class="absolute inset-0 opacity-20">
+                        <img src="${photoUrl}" class="w-full h-full object-cover" onerror="this.src='logo.png'">
                     </div>
-                `;
-            }).join('');
+                    <span class="relative z-10 text-lg md:text-xl font-black text-white bg-slate-900/80 px-2 py-0.5 rounded">#${item.place}</span>
+                    <span class="relative z-10 text-xs text-amber-400 font-bold bg-slate-900/80 px-2 rounded">${share}%</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 
             // Déclenchement automatique des confettis
             if (typeof confetti === 'function') {
@@ -322,9 +329,9 @@
                 <span>Développé avec passion par <strong class="text-white font-extrabold tracking-wide">L'ÉQUIPE BARKETECH</strong></span>
             </div>
             <div class="flex items-center gap-3 text-slate-500">
-                <span>&copy; 2026 VoteSMS</span>
+                <span>&copy; 2026 VoteBT</span>
                 <span>•</span>
-                <span class="text-amber-400/80 font-mono font-bold">Moov Niger Integration</span>
+                <span class="text-amber-400/80 font-mono font-bold">MyNITA</span>
             </div>
         </div>
     </footer>

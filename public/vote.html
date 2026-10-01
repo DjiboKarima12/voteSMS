@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matassamu Vote - Votez via MyNita</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+    body { background-color: #f8f9fa; }
+    
+    .candidat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+    }
+
+    /* Conteneur de l'image de la carte */
+    .candidat-img-wrapper {
+        width: 100%;
+        height: 380px; /* Hauteur idéale pour les affiches verticales */
+        background-color: #f8f9fa; /* Fond neutre ou blanc */
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* L'image remplit tout l'espace sans laisser de blanc */
+    .candidat-img-wrapper img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover; /* Remplit tout le cadre harmonieusement */
+        object-position: center; /* Centre l'image parfaitement */
+    }
+
+    .vote-badge { 
+        position: absolute; 
+        top: 12px; 
+        right: 12px; 
+        background: rgba(0, 0, 0, 0.75); 
+        color: white; 
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+    }
+
+    .btn-voter-card { 
+        width: 100%; 
+        border-radius: 0; 
+        background-color: #198754; 
+        color: white; 
+        font-weight: bold; 
+        padding: 10px;
+    }
+    .btn-voter-card:hover { 
+        background-color: #157347; 
+        color: white; 
+    }
+</style>
+ 
+</head>
+
+<body>
+    <!-- En-tête avec Titre, Compte à rebours à gauche et Logo à droite -->
+<div class="container my-4">
+    <div class="row align-items-center bg-white p-4 rounded shadow-sm">
+        
+        <!-- Colonne de gauche : Texte + Compte à rebours -->
+        <!-- En-tête compact et centré au milieu de la page -->
+<div class="container my-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-9 col-xl-8">
+            <div class="bg-white p-4 rounded shadow-sm border">
+                
+                <div class="row align-items-center">
+                    <!-- Colonne de gauche : Titre et Compte à rebours -->
+                    <div class="col-md-7 mb-3 mb-md-0">
+                        <h4 class="text-primary fw-bold mb-1">MATASSAMU VOTE NIGER</h4>
+                        <p class="text-muted small mb-3">Grand Gala des Lauréats - Votez via MyNita !</p>
+                        
+                        <h6 class="text-muted mb-2" style="font-size: 0.85rem;">Se termine dans</h6>
+                        <div class="row text-center g-2" id="countdown-timer">
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded shadow-sm">
+                                    <span id="days" class="fs-5 fw-bold text-primary">00</span>
+                                    <div class="text-muted" style="font-size: 0.65rem;">Jours</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded shadow-sm">
+                                    <span id="hours" class="fs-5 fw-bold text-primary">00</span>
+                                    <div class="text-muted" style="font-size: 0.65rem;">Heures</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded shadow-sm">
+                                    <span id="minutes" class="fs-5 fw-bold text-primary">00</span>
+                                    <div class="text-muted" style="font-size: 0.65rem;">Minutes</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="p-2 bg-light rounded shadow-sm">
+                                    <span id="seconds" class="fs-5 fw-bold text-primary">00</span>
+                                    <div class="text-muted" style="font-size: 0.65rem;">Secondes</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Colonne de droite : Logo de taille moyenne -->
+                    <div class="col-md-5 text-center">
+                        <img src="logo.png" alt="Logo" class="img-fluid rounded" style="max-height: 140px; object-fit: contain;">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+        <!-- Filtres et Recherche -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <select id="categoryFilter" class="form-select form-select-lg" onchange="filtrerCandidats()">
+                    <option value="">Toutes les catégories</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <input type="text" id="searchInput" class="form-control form-control-lg" placeholder="Rechercher un candidat ou un code..." oninput="filtrerCandidats()">
+            </div>
+        </div>
+
+        <!-- Grille des candidats -->
+        <div class="row" id="candidatsGrid">
+            <div class="col-12 text-center text-muted py-5">Chargement des candidats en cours...</div>
+        </div>
+    </div>
+
+    <!-- Modal de vote MyNita (style modèle) -->
+    <div class="modal fade" id="voteModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold" id="modalTitreCandidat">Voter pour le candidat</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="voteForm">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Téléphone MyNita *</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">🇳🇪 +227</span>
+                                <input type="tel" id="telephone" class="form-control" placeholder="93 12 34 56" required>
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Nombre de vote *</label>
+                                <input type="number" id="nombreVotes" class="form-control" value="1" min="1" oninput="calculerMontant()" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Montant (XOF)</label>
+                                <input type="text" id="montantTotal" class="form-control bg-light fw-bold text-success" value="200,00" readonly>
+                            </div>
+                        </div>
+                        <div class="alert alert-info py-2 small mb-0">
+                            Tarif : 1 vote = 200 F | 5 votes = 800 F (ou proportionnel). Paiement sécurisé via MyNita.
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="button" class="btn btn-success px-4 fw-bold" onclick="soumettreVote()">Valider le paiement MyNita</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let tousLesCandidats = [];
+        let candidatActuel = null;
+        let voteModal;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            voteModal = new bootstrap.Modal(document.getElementById('voteModal'));
+            chargerDonnees();
+        });
+
+        async function chargerDonnees() {
+            try {
+                let res = await fetch('/api/candidats').catch(() => null);
+                if (!res || !res.ok) res = await fetch('/api/admin/candidats');
+                if (!res.ok) throw new Error("Erreur chargement");
+                
+                const json = await res.json();
+                tousLesCandidats = Array.isArray(json) ? json : (json.data || []);
+                afficherCandidats(tousLesCandidats);
+            } catch (e) {
+                document.getElementById('candidatsGrid').innerHTML = '<div class="col-12 text-center text-danger py-5">Erreur de chargement des candidats.</div>';
+            }
+
+            try {
+                const resCats = await fetch('/api/categories');
+                if (resCats.ok) {
+                    const categories = await resCats.json();
+                    const select = document.getElementById('categoryFilter');
+                    select.innerHTML = '<option value="">Toutes les catégories</option>';
+                    if (Array.isArray(categories)) {
+                        categories.forEach(cat => {
+                            select.innerHTML += `<option value="${cat.id}">${cat.nom}</option>`;
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log("Catégories non disponibles");
+            }
+        }
+
+        function afficherCandidats(liste) {
+            const grid = document.getElementById('candidatsGrid');
+            grid.innerHTML = '';
+
+            if (!liste || liste.length === 0) {
+                grid.innerHTML = '<div class="col-12 text-center text-muted py-5">Aucun candidat trouvé.</div>';
+                return;
+            }
+
+            liste.forEach(c => {
+                const votesCount = c.nombre_votes || 0;
+                let photoUrl = (c.photo && c.photo.trim() !== '' && c.photo !== 'NULL') ? c.photo : 'logo.png';
+                const code = c.code_vote || c.code_sms || '';
+
+                grid.innerHTML += `
+        <div class="col-6 col-md-4 col-lg-3 mb-4">
+            <div class="candidat-card shadow-sm h-100">
+                <div class="candidat-img-wrapper" style="position: relative; overflow: hidden; background: #fff; height: 260px;">
+                    <span class="vote-badge">${votesCount} votes</span>
+                    <img src="${photoUrl}" class="w-100 h-100" style="object-fit: contain;" onerror="this.src='logo.png'" alt="${c.nom}">
+                </div>
+                <div class="p-3 text-center">
+                    <h6 class="fw-bold mb-1 text-truncate">${c.nom}</h6>
+                    <small class="text-muted d-block mb-2">Code: ${code}</small>
+                </div>
+                <button class="btn btn-voter-card mt-auto" onclick='ouvrirModalVote(${JSON.stringify(c)})'>
+                    Voter
+                </button>
+            </div>
+        </div>
+    `;
+            });
+        }
+
+        function filtrerCandidats() {
+            const catId = document.getElementById('categoryFilter').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+
+            const filtres = tousLesCandidats.filter(c => {
+                const matchCat = !catId || c.category_id == catId;
+                const code = (c.code_vote || c.code_sms || '').toLowerCase();
+                const nom = (c.nom || '').toLowerCase();
+                return matchCat && (!search || nom.includes(search) || code.includes(search));
+            });
+
+            afficherCandidats(filtres);
+        }
+
+        function ouvrirModalVote(candidat) {
+            candidatActuel = candidat;
+            document.getElementById('modalTitreCandidat').innerText = "Voter pour " + candidat.nom;
+            document.getElementById('nombreVotes').value = 1;
+            document.getElementById('telephone').value = '';
+            calculerMontant();
+            voteModal.show();
+        }
+
+        function calculerMontant() {
+            const n = parseInt(document.getElementById('nombreVotes').value) || 1;
+            let montant = 0;
+            // Règle : 5 votes = 800F, sinon par blocs de 5 + reliquat à 200F l'unité (ou calcul simple proportionnel intelligent)
+            const blocs5 = Math.floor(n / 5);
+            const reste = n % 5;
+            montant = (blocs5 * 800) + (reste * 200);
+            
+            document.getElementById('montantTotal').value = montant.toLocaleString('fr-FR') + ',00';
+        }
+
+        async function soumettreVote() {
+            const tel = document.getElementById('telephone').value.trim();
+            const nbVotes = parseInt(document.getElementById('nombreVotes').value) || 1;
+            const code = candidatActuel.code_vote || candidatActuel.code_sms;
+
+            if (!tel || tel.length < 8) {
+                alert('Veuillez entrer un numéro de téléphone MyNita valide.');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/voter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code_vote: code, nombre_votes: nbVotes, telephone: tel })
+                });
+                const data = await res.json();
+                voteModal.hide();
+                if (data.success) {
+                    alert('Paiement MyNita initié / Vote de ' + nbVotes + ' voix enregistré avec succès !');
+                    chargerDonnees();
+                } else {
+                    alert('Erreur lors du traitement du vote.');
+                }
+            } catch (e) {
+                voteModal.hide();
+                alert('Erreur de connexion au serveur.');
+            }
+        }
+    </script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Mettez ici la vraie date fixe de fin de votre événement (Année, Mois-1, Jour, Heure, Minute)
+        // Note : Les mois commencent à 0 (0 = Janvier, 8 = Septembre, 9 = Octobre, etc.)
+        // Exemple ci-dessous pour le 10 octobre 2026 à 23h59 :
+        const targetDate = new Date(2026, 9, 10, 23, 59, 59).getTime();
+
+        function mettreAJourCompteur() {
+            const now = new Date().getTime();
+            const distance = targetDate - now;
+
+            if (distance < 0) {
+                const timerContainer = document.getElementById("countdown-timer");
+                if (timerContainer) {
+                    timerContainer.innerHTML = "<div class='col-12 text-danger fw-bold text-center py-2'>Les votes sont terminés !</div>";
+                }
+                return;
+            }
+
+            const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+            const elDays = document.getElementById("days");
+            const elHours = document.getElementById("hours");
+            const elMinutes = document.getElementById("minutes");
+            const elSeconds = document.getElementById("seconds");
+
+            if (elDays) elDays.innerText = String(days).padStart(2, '0');
+            if (elHours) elHours.innerText = String(hours).padStart(2, '0');
+            if (elMinutes) elMinutes.innerText = String(minutes).padStart(2, '0');
+            if (elSeconds) elSeconds.innerText = String(seconds).padStart(2, '0');
+        }
+
+        mettreAJourCompteur();
+        setInterval(mettreAJourCompteur, 1000);
+    });
+</script>
+</body>
+</html>
+
