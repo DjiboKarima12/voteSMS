@@ -7,6 +7,11 @@ const db = require('./config/db');
 const voteRoutes = require('./routes/voteRoutes');
 
 const app = express();
+app.use((req, res, next) => {
+    console.log(`[REQUÊTE ENTRANTE] ${req.method} ${req.originalUrl}`);
+    next();
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 app.use(helmet({
   contentSecurityPolicy: false
@@ -67,6 +72,30 @@ app.post('/api/nita/callback', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });const PORT = process.env.PORT || 3000;
+// Route pour que le front-end vérifie si le paiement est validé
+app.get('/api/votes/check-status', async (req, res) => {
+    try {
+        const { codeAchat } = req.query;
+        
+        const [rows] = await db.query(
+            'SELECT statut FROM transactions WHERE code_achat = ?',
+            [codeAchat]
+        );
+
+        if (rows.length === 0) {
+            return res.json({ success: false, statut: 'NOT_FOUND' });
+        }
+
+        return res.json({
+            success: true,
+            statut: rows[0].statut 
+        });
+    } catch (error) {
+        console.error("Erreur check-status:", error);
+        return res.status(500).json({ success: false, message: "Erreur serveur" });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Serveur prêt sur http://localhost:${PORT}`);
 });

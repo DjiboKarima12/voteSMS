@@ -1,3 +1,4 @@
+
 const db = require('../config/db');
 const { creerAchatEnLigne } = require('../services/nitaService'); 
 
@@ -143,17 +144,8 @@ const handleSmsVote = async (req, res) => {
         }
 
         const codeVote = message.trim();
-        // 3. Enregistrer le vote dans la table des votes (sans la colonne montant qui n'existe pas ici)
-                await db.query(
-                    'INSERT INTO votes (candidat_id, nombre_voix, telephone) VALUES (?, ?, ?)',
-                    [tx.candidat_id, tx.nombre_voix, tx.telephone]
-                );
-
-                // 4. Incrémenter le nombre de votes sur le profil du candidat (en utilisant la vraie colonne 'nombre_votes')
-                await db.query(
-                    'UPDATE candidats SET nombre_votes = nombre_votes + ? WHERE id = ?',
-                    [tx.nombre_voix, tx.candidat_id]
-                );
+        await db.query('INSERT INTO votes_sms (phone_number, message, code_vote) VALUES (?, ?, ?)', [sender, message, codeVote]);
+        await db.query('UPDATE candidats SET nombre_votes = nombre_votes + 1 WHERE code_vote = ?', [codeVote]);
 
         res.json({ success: true, message: "Vote enregistré avec succès" });
     } catch (error) {
@@ -162,6 +154,7 @@ const handleSmsVote = async (req, res) => {
     }
 };
 
+// Initier un achat/paiement de vote via l'API MyNITA
 // Initier un achat/paiement de vote via l'API MyNITA
 const initierPaiementNita = async (req, res) => {
     try {
@@ -178,7 +171,7 @@ const initierPaiementNita = async (req, res) => {
         }
         const candidat = candidats[0];
 
-        // 2. Calculer le montant (200 FCFA l'unité ou 800 FCFA les 5 votes)
+        // 2. Calculer le montant selon votre grille tarifaire (200 FCFA l'unité ou 800 FCFA les 5 votes)
         let montantTotal = 0;
         const nbVotes = parseInt(nombreVotes, 10);
 
@@ -190,8 +183,8 @@ const initierPaiementNita = async (req, res) => {
             montantTotal = nbVotes * 200;
         }
 
-        // 3. Formatage rigoureux du numéro de téléphone exigé par MyNITA
-        let telClean = phoneClient.replace(/\D/g, '');
+        // 3. Formatage rigoureux du numéro de téléphone exigé par MyNITA (ex: 00227XXXXXXXX)
+        let telClean = phoneClient.replace(/\D/g, ''); // Ne garde que les chiffres
         if (telClean.startsWith('227')) {
             telClean = '00' + telClean;
         } else if (!telClean.startsWith('00227')) {
@@ -200,7 +193,7 @@ const initierPaiementNita = async (req, res) => {
 
         // 4. Préparer les paramètres pour MyNITA
         const requestId = `VOTE-${Date.now()}-${candidatId}`;
-        const description = [`${nombreVotes} vote(s) pour ${candidats[0].nom} (Code: ${candidat.code_vote})`];
+        const description = [`${nombreVotes} vote(s) pour ${candidat.nom} (Code: ${candidat.code_vote})`];
         const adresseIp = req.ip || req.connection.remoteAddress || "127.0.0.1";
 
         // 5. Appeler le service NITA pour créer l'achat
@@ -213,16 +206,7 @@ const initierPaiementNita = async (req, res) => {
             urlCallback: "https://matassamuvote.tech/api/votes/nita-callback"
         });
 
-        // Récupérer le code d'achat ou la référence renvoyée par NITA
-        // Récupérer correctement le code d'achat renvoyé par MyNITA dans l'objet data
-         const codeAchat = resultatNita?.data?.codeAchat || resultatNita?.codeAchat || requestId;
-
-        // 6. ENREGISTRER LA TRANSACTION DANS MYSQL (C'est ce qui manquait !
-           await db.query(
-    `INSERT INTO transactions (request_id, code_achat, candidat_id, nombre_voix, montant, telephone, statut) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [requestId, codeAchat, candidatId, nbVotes, montantTotal, telClean, 'PENDING']
-);
-
+        // Le résultat contient le codeAchat généré par NITA[cite: 11]
         return res.json({
             success: true,
             message: "Achat NITA initialisé avec succès",
@@ -231,71 +215,28 @@ const initierPaiementNita = async (req, res) => {
 
     } catch (error) {
         console.error("Erreur initierPaiementNita détaillée :", error.response?.data || error.message);
-        return res.status(500).json({
-            success: false,
-            message: error.response?.data?.message || error.message || "Erreur lors de la communication avec MyNITA."
+        return res.status(500).json({ 
+            success: false, 
+            message: error.response?.data?.message || "Erreur lors de la communication avec MyNITA." 
         });
     }
 };
-// Déclaration propre de la fonction
-const nitaCallback = async (req, res) => {
+exports.nitaCallback = async (req, res) => {
     try {
-        const data = { ...req.query, ...req.body };
-        const { status, statusTransaction, reference, codeAchat, requestId } = data;
-        const ref = reference || codeAchat || requestId;
+        const transactionData = req.body;
+        console.log("Données reçues du callback MyNITA :", JSON.stringify(transactionData, null, 2));
 
-        console.log(`Callback MyNITA reçu pour la référence: ${ref}, statut: ${status || statusTransaction}`);
+        const { requestId, statusTransaction } = transactionData;
 
-        if (status === '1' || status === 1 || status === '0' || status === 'Succès' || status === 'SUCCESS' || statusTransaction === 'Succès' || statusTransaction === 'SUCCESS') {
-            console.log(`Paiement validé pour la référence: ${ref}`);
-
-            // 1. Récupérer les détails de la transaction pour connaître le candidat et le nombre de voix
-            const [txRows] = await db.query(
-                'SELECT * FROM transactions WHERE request_id = ? OR code_achat = ?',
-                [ref, ref]
-            );
-
-            if (txRows.length > 0) {
-                const tx = txRows[0];
-// 2. Vérification Anti-doublon : Si la transaction est déjà marquée comme SUCCESS, on stoppe net
-            if (tx.statut === 'SUCCESS' || tx.statut === 'success') {
-                return res.json({
-                    success: true,
-                    message: "Transaction déjà traitée, aucun doublon appliqué."
-                });
-            }
-
-                // 2. Mettre à jour le statut de la transaction en SUCCESS
-                await db.query(
-                    'UPDATE transactions SET statut = ? WHERE id = ?',
-                    ['SUCCESS', tx.id]
-                );
-
-                // 3. Enregistrer le vote dans la table des votes
-                await db.query(
-                    'INSERT INTO votes (candidat_id, nombre_voix, telephone) VALUES (?, ?, ?)',
-                    [tx.candidat_id, tx.nombre_voix, tx.telephone]
-                );
-                
-                // 4. Incrémenter directement le nombre de votes sur le profil du candidat
-                await db.query(
-                    'UPDATE candidats SET nombre_votes = nombre_votes + ? WHERE id = ?',
-                    [tx.nombre_voix, tx.candidat_id]
-                );
-            }
-
+        if (statusTransaction === 'Succès' || statusTransaction === 'SUCCESS') {
+            console.log(`Paiement validé pour le requestId: ${requestId}`);
+            
             return res.status(200).json({
                 success: true,
-                message: "Callback traité avec succès, vote enregistré et candidat mis à jour."
+                message: "Callback traité avec succès, vote enregistré."
             });
         } else {
-            console.log(`Paiement non validé pour la référence: ${ref}`);
-
-            await db.query(
-                'UPDATE transactions SET statut = ? WHERE request_id = ? OR code_achat = ?',
-                ['FAILED', ref, ref]
-            );
-
+            console.log(`Paiement non validé (Statut: ${statusTransaction}) pour le requestId: ${requestId}`);
             return res.status(400).json({
                 success: false,
                 message: "Statut de transaction non validé."
@@ -309,35 +250,6 @@ const nitaCallback = async (req, res) => {
         });
     }
 };
-const verifierTransaction = async (req, res) => {
-    try {
-        const { reference } = req.params;
-
-        // Chercher par request_id ou code_achat
-        const [rows] = await db.query(
-            'SELECT * FROM transactions WHERE request_id = ? OR code_achat = ?',
-            [reference, reference]
-        );
-
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Cet achat est introuvable."
-            });
-        }
-
-        return res.json({
-            success: true,
-            data: rows[0]
-        });
-    } catch (error) {
-        console.error("Erreur verifierTransaction :", error.message);
-        return res.status(500).json({
-            success: false,
-            message: "Erreur interne lors de la vérification de l'achat."
-        });
-    }
-};
 
 module.exports = {
     getVotes,
@@ -346,7 +258,5 @@ module.exports = {
     getStats,
     handleSmsVote,
     initierPaiementNita,
-    nitaCallback,
-   verifierTransaction
+    nitaCallback
 };
-

@@ -9,6 +9,11 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware pour parser les requêtes JSON et URL-encoded
 app.use(express.json());
+
+// Montage des routes de vote et de paiement MyNITA
+const voteRoutes = require('./src/routes/voteRoutes');
+app.use('/api', voteRoutes);
+
 app.use(express.urlencoded({ extended: true }));
 
 // Configuration de Multer pour l'upload des photos
@@ -31,9 +36,9 @@ const upload = multer({ storage: storage });
 // Configuration de la connexion à la base de données MySQL
 const db = mysql.createPool({
     host: 'localhost',
-    user: 'root',
-    password: 'VOTRE_MOT_DE_PASSE_MYSQL',
-    database: 'vote_sms',
+    user: 'root', // ou 'votesms_user'
+    password: 'Kimi@12',
+    database: 'vote_platform',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
@@ -47,6 +52,10 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
+app.get('/vote', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'vote.html'));
+});
+
 // -------------------------------------------------------------
 // ROUTES API ADMIN - CANDIDATS
 // -------------------------------------------------------------
@@ -54,7 +63,14 @@ app.get('/', (req, res) => {
 // Obtenir tous les candidats
 app.get('/api/admin/candidats', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM candidats ORDER BY id DESC');
+        const [rows] = await db.query(`
+            SELECT 
+                c.*, 
+                cat.nom AS category_name 
+            FROM candidats c
+            LEFT JOIN categories cat ON c.category_id = cat.id
+            ORDER BY c.id ASC
+        `);
         res.json({ success: true, data: rows });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -128,7 +144,7 @@ app.delete('/api/admin/candidats/:id', async (req, res) => {
 // Route publique pour récupérer tous les candidats (sans protection admin)
 app.get('/api/candidats', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM candidats ORDER BY id DESC');
+        const [rows] = await db.query('SELECT * FROM candidats ORDER BY id ASC');
         res.json(rows);
     } catch (err) {
         console.error("Erreur /api/candidats:", err);
@@ -139,7 +155,7 @@ app.get('/api/candidats', async (req, res) => {
 app.get('/api/categories', async (req, res) => {
     try {
         // On récupère les catégories uniques ou une liste fixe selon votre structure
-        const [rows] = await db.query('SELECT DISTINCT category_id as id, CONCAT("Catégorie ", category_id) as nom FROM candidats');
+        const [rows] = await db.query('SELECT id, nom FROM categories');
         res.json(rows);
     } catch (err) {
         console.error("Erreur /api/categories:", err);
@@ -147,6 +163,64 @@ app.get('/api/categories', async (req, res) => {
     }
 });
 // Démarrage du serveur
+
+// Routes API pour les statistiques et le podium
+app.get('/api/stats', async (req, res) => {
+    try {
+        const [totalVotesRows] = await db.query('SELECT COUNT(*) as total FROM votes');
+        const [topCandidats] = await db.query(`
+            SELECT c.*, cat.nom AS category_name, COUNT(v.id) as nombre_votes 
+            FROM candidats c 
+            LEFT JOIN categories cat ON c.category_id = cat.id 
+            LEFT JOIN votes v ON c.id = v.candidat_id 
+            GROUP BY c.id 
+            ORDER BY nombre_votes DESC
+        `);
+        res.json({
+            success: true,
+            totalVotes: totalVotesRows[0].total || 0,
+            candidats: topCandidats
+        });
+    } catch (err) {
+        console.error('Erreur /api/stats:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+
+// Route API pour les résultats du podium et dashboard (/api/results)
+
+// Route API pour les résultats du podium et dashboard (/api/results)
+
+// Route API pour les résultats du podium et dashboard (/api/results)
+
+// Route API pour les résultats du podium et dashboard (/api/results)
+
+// Route API pour les résultats du podium et dashboard (/api/results)
+app.get('/api/results', async (req, res) => {
+    try {
+        const [candidats] = await db.query(`
+            SELECT 
+                c.*, 
+                cat.code AS category_code,
+                cat.nom AS category_name,
+                c.nombre_votes AS total_votes,
+                c.nombre_votes AS nombre_votes
+            FROM candidats c
+            LEFT JOIN categories cat ON c.category_id = cat.id
+            ORDER BY c.nombre_votes DESC, c.id ASC
+        `);
+
+        res.json({
+            success: true,
+            data: candidats
+        });
+    } catch (err) {
+        console.error('Erreur /api/results:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Serveur démarré sur http://localhost:${PORT}`);
 });

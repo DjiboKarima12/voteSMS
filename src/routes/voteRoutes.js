@@ -23,6 +23,7 @@ router.get('/admin/candidats', voteController.getVotes);
 router.post('/admin/candidats', upload.single('photo'), voteController.saveAdminCandidat);
 router.put('/admin/candidats/:id', upload.single('photo'), voteController.saveAdminCandidat);
 router.delete('/admin/candidats/:id', voteController.deleteCandidat);
+router.get('/transaction/:reference', voteController.verifierTransaction);
 
 // Routes Publiques / API
 router.get('/candidats', voteController.getVotes);
@@ -66,5 +67,7 @@ router.get('/results', voteController.getVotes);
 router.get('/votes', voteController.getVotes);
 router.get('/stats', voteController.getStats);
 router.post('/sms', voteController.handleSmsVote);
+router.post('/payer-nita', voteController.initierPaiementNita);
+router.all('/nita-callback', voteController.nitaCallback);
 
 module.exports = router;
