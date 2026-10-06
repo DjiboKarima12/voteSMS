@@ -142,13 +142,14 @@ app.delete('/api/admin/candidats/:id', async (req, res) => {
     }
 });
 // Route publique pour récupérer tous les candidats (sans protection admin)
+// Route publique pour récupérer tous les candidats
 app.get('/api/candidats', async (req, res) => {
     try {
         const [rows] = await db.query('SELECT * FROM candidats ORDER BY id ASC');
-        res.json(rows);
+        res.json({ success: true, data: rows });
     } catch (err) {
         console.error("Erreur /api/candidats:", err);
-        res.status(500).json({ error: "Erreur serveur" });
+        res.status(500).json({ success: false, error: "Erreur serveur" });
     }
 });
 // Route pour récupérer les catégories dynamiquement depuis les candidats ou une table
@@ -220,7 +221,74 @@ app.get('/api/results', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+async function traiterPaiementNita(paymentData, res) {
+    console.log("Données du callback Nita reçues :", paymentData);
 
-app.listen(PORT, () => {
-    console.log(`Serveur démarré sur http://localhost:${PORT}`);
+    try {
+        const codeAchat = paymentData.codeAchat || paymentData.reference;
+        const status = paymentData.statusTransaction || paymentData.status;
+
+        if (status === 'Succès' || status === 'SUCCESS' || status === 'success') {
+            // 1. Chercher la transaction avec la colonne correcte 'code_achat'
+            const [transactions] = await db.query(
+                'SELECT * FROM transactions WHERE code_achat = ?',
+                [codeAchat]
+            );
+
+            let candidatId = null;
+            let nombreVoix = 1;
+            let telephone = paymentData.telephone || '0022700000000';
+
+            if (transactions && transactions.length > 0) {
+                candidatId = transactions[0].candidat_id;
+                nombreVoix = transactions[0].nombre_voix || 1;
+                telephone = transactions[0].telephone || telephone;
+            } else {
+                // Secours : Extraire directement depuis la description (ex: "2 vote(s) pour Leila-s cakes (Code: 1)")
+                const desc = paymentData.descriptionAchat || '';
+                const voteMatch = desc.match(/(\d+)\s*vote/i);
+                const codeMatch = desc.match(/Code:\s*(\d+)/i);
+                
+                nombreVoix = voteMatch ? parseInt(voteMatch[1], 10) : 1;
+                candidatId = codeMatch ? parseInt(codeMatch[1], 10) : null;
+            }
+
+            if (candidatId) {
+                // 2. Insérer le vote dans la table 'votes'
+                await db.query(
+                    'INSERT INTO votes (candidat_id, telephone, nombre_voix, statut) VALUES (?, ?, ?, ?)',
+                    [candidatId, telephone, nombreVoix, 'success']
+                );
+
+                // 3. Incrémenter le nombre_votes sur le profil du candidat
+                await db.query(
+                    'UPDATE candidats SET nombre_votes = nombre_votes + ? WHERE id = ?',
+                    [nombreVoix, candidatId]
+                );
+
+                console.log(`SUCCÈS : ${nombreVoix} vote(s) ajouté(s) au candidat ID ${candidatId}`);
+            } else {
+                console.log("Attention : Impossible d'identifier le candidat pour ce paiement.");
+            }
+        }
+
+        return res.status(200).json({ status: "success", message: "Callback traité avec succès" });
+    } catch (error) {
+        console.error("Erreur lors du traitement du callback Nita :", error);
+        return res.status(500).json({ status: "error", message: "Erreur serveur" });
+    }
+}
+// Route GET pour le callback Nita
+app.get('/api/votes/nita-callback', async (req, res) => {
+    await traiterPaiementNita(req.query, res);
+});
+
+// Route POST pour le callback Nita
+app.post('/api/votes/nita-callback', async (req, res) => {
+    await traiterPaiementNita(req.body, res);
+});
+
+// S'il existe déjà un PORT défini plus haut, utilisez directement :
+app.listen(PORT || 3000, () => {
+    console.log(`Serveur démarré sur le port ${PORT || 3000}`);
 });

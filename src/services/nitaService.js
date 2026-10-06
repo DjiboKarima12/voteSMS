@@ -27,12 +27,18 @@ async function authenticateNita() {
             }
         });
 
-        if (response.data && response.data.data && response.data.data.token) {
-            cachedToken = response.data.data.token;
+        // Afficher toute la réponse pour voir ce que Nita envoie vraiment
+        console.log("REPONSE AUTH NITA BRUTE :", JSON.stringify(response.data, null, 2));
+
+        // Chercher le token dans tous les endroits possibles
+        const token = response.data?.data?.token || response.data?.token || response.data?.accessToken || response.data?.access_token;
+
+        if (token) {
+            cachedToken = token;
             tokenExpiration = Date.now() + (50 * 60 * 1000);
             return cachedToken;
         } else {
-            throw new Error("Token introuvable dans la réponse d'authentification NITA.");
+            throw new Error("Token introuvable. Structure reçue : " + JSON.stringify(response.data));
         }
     } catch (error) {
         console.error("Erreur d'authentification MyNITA :", error.response?.data || error.message);
@@ -71,32 +77,11 @@ async function creerAchatEnLigne({ requestId, montant, description, phoneClient,
         throw error;
     }
 }
-async function verifierStatutAchat(requestId, ipClient) {
-    try {
-        const token = await getAuthToken();
-        const response = await axios.post(`${process.env.NITA_BASE_URL}/api/nitaServices/achatEnLigne/checkAchatStatus`, {
-            requestId: requestId,
-            longTransaction: "2.0301",
-            latTransaction: "13.5123",
-            adresseIp: ipClient || "127.0.0.1"
-        }, {
-            headers: {
-                'X-NT-API-KEY': process.env.NITA_API_KEY,
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            }
-        });
-        console.log("Statut de l'achat :", response.data);
-        return response.data;
-    } catch (error) {
-        console.error("Erreur lors de la vérification du statut :", error.response?.data || error.message);
-        throw error;
-    }
-}
+
+// 3. Fonction pour vérifier le statut d'un achat
 async function checkAchatStatus(requestId, ipClient) {
     try {
-        const token = await authenticateNita(); // Corrigé : utilise la bonne fonction d'authentification
+        const token = await authenticateNita();
         const response = await axios.post(`${NITA_BASE_URL}/api/nitaServices/achatEnLigne/checkAchatStatus`, {
             requestId: requestId,
             longTransaction: "2.0301",
@@ -110,6 +95,7 @@ async function checkAchatStatus(requestId, ipClient) {
                 'Content-Type': 'application/json'
             }
         });
+        
         console.log("Statut de l'achat vérifié :", response.data);
         return response.data;
     } catch (error) {
@@ -119,6 +105,7 @@ async function checkAchatStatus(requestId, ipClient) {
 }
 
 module.exports = {
+    authenticateNita,
     creerAchatEnLigne,
-     checkAchatStatus
+    checkAchatStatus
 };
